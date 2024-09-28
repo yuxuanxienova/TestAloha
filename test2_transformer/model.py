@@ -3,7 +3,114 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import math
 # ----------------------------------------------  Main model part  -----------------------------------------------------
+class TransformerEncoder(nn.Module):
+    """
+    Transformer Encoder
+    """
+    def __init__(self, args):
+        super(TransformerEncoder, self).__init__()
+        # Model parameters
+        self.depth = args["depth"]
+        self.n_heads = args["n_heads"]
+        self.embed_dim = args["entity_dim"]
+        self.num_input_tokens = args["num_input_tokens"]
+        self.out_dim = args["out_dim"]
+        # Standard Positional Encoding        
+        self.pos_encoding = PositionalEncoding(self.embed_dim, dropout=0.1, max_len=5000)
+        
+        # naive positional embedding
+        # self.pos_embed = nn.Parameter(
+        #         torch.zeros(1, self.num_input_tokens, self.embed_dim)
+        # )#Dim(1,num_input_tokens,embed_dim)
+
+        # Transformer Encoder
+        self.transformer_encoder_blocks = nn.ModuleList()
+        for _ in range(self.depth):
+            self.transformer_encoder_blocks.append(TransformerEncoderBlock(dim = self.embed_dim , n_heads=self.n_heads))
+
+        self.norm = nn.LayerNorm(self.embed_dim, eps=1e-6)
+        self.head = nn.Linear(self.embed_dim, self.out_dim)
+
+    def forward(self, x):
+        """
+        The forward pass.
+        :param batch: Current batch of data.
+        :return: Each forward pass must return a dictionary with keys {'seed', 'predictions'}.
+        """
+        #x: Dim (n_samples, num_tokens, embed_dim)
+        batch_size = x.shape[0]#batch_size = n_samples
+        cls_token = nn.Parameter(torch.zeros(batch_size, 1, self.embed_dim))#Dim(n_samples,1,embed_dim)
+        x = torch.cat((cls_token, x), dim=1)
+        x = self.pos_encoding(x)
+        for encoder_block in self.transformer_encoder_blocks:
+            x = encoder_block(x)
+        # Dim (n_samples, num_tokens, embed_dim)     
+        x = self.norm(x)#Dim(n_samples, num_tokens,embed_dim)
+        cls_token_final = x[:, 0]  # just the CLS token ;Dim(n_samples,embed_dim)
+        pred = self.head(cls_token_final)#Dim(n_samples,out_dim)
+        return pred
+    
+class TransformerEncoderBlock(nn.Module):
+    """Transformer block.
+    Parameters
+    ----------
+    dim : int
+        Embeddinig dimension.
+    n_heads : int
+        Number of attention heads.
+    mlp_ratio : float
+        Determines the hidden dimension size of the `MLP` module with respect
+        to `dim`.
+    qkv_bias : bool
+        If True then we include bias to the query, key and value projections.
+    p, attn_p : float
+        Dropout probability.
+    Attributes
+    ----------
+    norm1, norm2 : LayerNorm
+        Layer normalization.
+    attn : Attention
+        Attention module.
+    mlp : MLP
+        MLP module.
+    """
+    def __init__(self, dim, n_heads, mlp_ratio=4.0, qkv_bias=True, p=0., attn_p=0,):
+        super().__init__()
+        mlp_ratio=4.0
+        hidden_features = int(dim*mlp_ratio)
+
+        self.norm1 = nn.LayerNorm(dim, eps=1e-6)
+        self.attn = Self_Attention(
+            dim,
+            n_heads=n_heads,
+            qkv_bias=qkv_bias,
+            attn_p=attn_p,
+            proj_p=p
+        )
+        self.norm2 = nn.LayerNorm(dim, eps=1e-6)
+        self.mlp = MLP(
+            in_features=dim,
+            hidden_features=hidden_features,
+            out_features=dim
+        )
+    def forward(self, x):
+        """Run forward pass.
+        Parameters
+        ----------
+        x : torch.Tensor
+            Shape `(n_samples, n_patches + 1, dim)`.
+        Returns
+        -------
+        torch.Tensor
+            Shape `(n_samples, n_patches + 1, dim)`.
+        """
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+
+        return x
+    
 class Self_Attention(nn.Module):
     """Multi Head Self Attention  + Dense Layer.
     Parameters
@@ -159,106 +266,31 @@ class MLP(nn.Module):
 
         return x
     
-class TransformerEncoderBlock(nn.Module):
-    """Transformer block.
-    Parameters
-    ----------
-    dim : int
-        Embeddinig dimension.
-    n_heads : int
-        Number of attention heads.
-    mlp_ratio : float
-        Determines the hidden dimension size of the `MLP` module with respect
-        to `dim`.
-    qkv_bias : bool
-        If True then we include bias to the query, key and value projections.
-    p, attn_p : float
-        Dropout probability.
-    Attributes
-    ----------
-    norm1, norm2 : LayerNorm
-        Layer normalization.
-    attn : Attention
-        Attention module.
-    mlp : MLP
-        MLP module.
-    """
-    def __init__(self, dim, n_heads, mlp_ratio=4.0, qkv_bias=True, p=0., attn_p=0,):
-        super().__init__()
-        mlp_ratio=4.0
-        hidden_features = int(dim*mlp_ratio)
-
-        self.norm1 = nn.LayerNorm(dim, eps=1e-6)
-        self.attn = Self_Attention(
-            dim,
-            n_heads=n_heads,
-            qkv_bias=qkv_bias,
-            attn_p=attn_p,
-            proj_p=p
-        )
-        self.norm2 = nn.LayerNorm(dim, eps=1e-6)
-        self.mlp = MLP(
-            in_features=dim,
-            hidden_features=hidden_features,
-            out_features=dim
-        )
+#---------------------------------------------------  Positional Encoding  -----------------------------------------------------
+class PositionalEncoding(nn.Module):
+    def __init__(self, embed_dim, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()  
+        self.dropout = nn.Dropout(p=dropout)  # 初始化dropout层
+        
+        # 计算位置编码并将其存储在pe张量中
+        pe = torch.zeros(max_len, embed_dim)                #Dim:(max_len , embed_dim) 创建一个max_len x embed_dim的全零张量
+        token_pos = torch.arange(0, max_len).unsqueeze(1)  # 生成0到max_len-1的整数序列，并添加一个维度
+        # 计算div_term，用于缩放不同位置的正弦和余弦函数
+        div_term = torch.exp(torch.arange(0, embed_dim, 2) *
+                             -(math.log(10000.0) / embed_dim))
+ 
+        # 使用正弦和余弦函数生成位置编码，对于d_model的偶数索引，使用正弦函数；对于奇数索引，使用余弦函数。
+        pe[:, 0::2] = torch.sin(token_pos * div_term) #Dim:(max_len , embed_dim)
+        pe[:, 1::2] = torch.cos(token_pos * div_term) #Dim:(max_len , embed_dim)
+        pe = pe.unsqueeze(0)                  # 在第一个维度添加一个维度，以便进行批处理
+        self.register_buffer('pe', pe)        # 将位置编码张量注册为缓冲区，以便在不同设备之间传输模型时保持其状态
+        
+    # 定义前向传播函数
     def forward(self, x):
-        """Run forward pass.
-        Parameters
-        ----------
-        x : torch.Tensor
-            Shape `(n_samples, n_patches + 1, dim)`.
-        Returns
-        -------
-        torch.Tensor
-            Shape `(n_samples, n_patches + 1, dim)`.
-        """
-        x = x + self.attn(self.norm1(x))
-        x = x + self.mlp(self.norm2(x))
-
-        return x
-    
-class TransformerEncoder(nn.Module):
-    """
-    Transformer Encoder
-    """
-    def __init__(self, args):
-        super(TransformerEncoder, self).__init__()
-        # Model parameters
-        self.depth = args["depth"]
-        self.n_heads = args["n_heads"]
-        self.entity_dim = args["entity_dim"]
-        self.num_input_tokens = args["num_input_tokens"]
-        self.out_dim = args["out_dim"]
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, self.entity_dim)) #Dim(1,1,entity_dim)
-        self.pos_embed = nn.Parameter(
-                torch.zeros(1, self.num_input_tokens, self.entity_dim)
-        )#Dim(1,num_input_tokens,entity_dim)
-
-        # Transformer Encoder
-        self.transformer_encoder_blocks = nn.ModuleList()
-        for _ in range(self.depth):
-            self.transformer_encoder_blocks.append(TransformerEncoderBlock(dim = self.entity_dim , n_heads=self.n_heads))
-
-        self.norm = nn.LayerNorm(self.entity_dim, eps=1e-6)
-        self.head = nn.Linear(self.entity_dim, self.out_dim)
-
-    def forward(self, x):
-        """
-        The forward pass.
-        :param batch: Current batch of data.
-        :return: Each forward pass must return a dictionary with keys {'seed', 'predictions'}.
-        """
-        #x: Dim (n_samples, num_tokens, entity_dim)
-        barch_size = x.shape[0]#batch_size = n_samples
-        x = x + self.pos_embed
-        for encoder_block in self.transformer_encoder_blocks:
-            x = encoder_block(x)
-        #Dim(n_samples, num_tokens, entity_dim)     
-        x = self.norm(x)#Dim(n_samples, num_tokens,entity_dim)
-        cls_token_final = x[:, 0]  # just the CLS token ;Dim(n_samples,entity_dim)
-        pred = self.head(cls_token_final)#Dim(n_samples,out_dim)
-        return pred
+        # 将输入x与对应的位置编码相加
+        x = x + self.pe[:, :x.size(1)].to(x.device)
+        # 应用dropout层并返回结果
+        return self.dropout(x)
 #---------------------------------------------------Test the model-----------------------------------------------------
 if __name__ == "__main__":
     # Define the model parameters
@@ -269,7 +301,6 @@ if __name__ == "__main__":
         "num_input_tokens": 10,
         "out_dim": 10
     }
-
     # Instantiate the model
     model = TransformerEncoder(args)
 

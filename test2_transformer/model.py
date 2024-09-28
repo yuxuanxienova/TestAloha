@@ -18,7 +18,7 @@ class TransformerEncoder(nn.Module):
         self.num_input_tokens = args["num_input_tokens"]
         self.out_dim = args["out_dim"]
         # Standard Positional Encoding        
-        self.pos_encoding = PositionalEncoding(self.embed_dim, dropout=0.1, max_len=5000)
+        self.pos_encoding = StandardPositionalEncoding(self.embed_dim, dropout=0.1, max_len=5000)
         
         # naive positional embedding
         # self.pos_embed = nn.Parameter(
@@ -39,11 +39,13 @@ class TransformerEncoder(nn.Module):
         :param batch: Current batch of data.
         :return: Each forward pass must return a dictionary with keys {'seed', 'predictions'}.
         """
-        #x: Dim (n_samples, num_tokens, embed_dim)
+        #x: Dim (n_samples, num_input_tokens, embed_dim)
         batch_size = x.shape[0]#batch_size = n_samples
         cls_token = nn.Parameter(torch.zeros(batch_size, 1, self.embed_dim))#Dim(n_samples,1,embed_dim)
-        x = torch.cat((cls_token, x), dim=1)
-        x = self.pos_encoding(x)
+        #Note num_input_tokens + 1 because of the cls token
+        x = torch.cat((cls_token, x), dim=1)#Dim(n_samples, num_input_tokens + 1, embed_dim)
+        x = self.pos_encoding(x)#Dim(n_samples, num_input_tokens + 1, embed_dim)
+        #num_tokens = num_input_tokens + 1
         for encoder_block in self.transformer_encoder_blocks:
             x = encoder_block(x)
         # Dim (n_samples, num_tokens, embed_dim)     
@@ -267,29 +269,46 @@ class MLP(nn.Module):
         return x
     
 #---------------------------------------------------  Positional Encoding  -----------------------------------------------------
-class PositionalEncoding(nn.Module):
+class StandardPositionalEncoding(nn.Module):
+    """Positional encoding.
+    Parameters
+    ----------
+    embed_dim : int
+        Embedding dimension.
+    dropout : float
+        Dropout rate.
+    max_len : int
+        Maximum length of the input sequence.
+    Attributes
+    ----------
+    dropout : nn.Dropout
+        Dropout layer.
+    pe : torch.Tensor
+        Positional encoding.
+    """
     def __init__(self, embed_dim, dropout, max_len=5000):
-        super(PositionalEncoding, self).__init__()  
-        self.dropout = nn.Dropout(p=dropout)  # 初始化dropout层
+        super(StandardPositionalEncoding, self).__init__()  
+        self.dropout = nn.Dropout(p=dropout)  #initiate dropout layer
         
-        # 计算位置编码并将其存储在pe张量中
-        pe = torch.zeros(max_len, embed_dim)                #Dim:(max_len , embed_dim) 创建一个max_len x embed_dim的全零张量
-        token_pos = torch.arange(0, max_len).unsqueeze(1)  # 生成0到max_len-1的整数序列，并添加一个维度
-        # 计算div_term，用于缩放不同位置的正弦和余弦函数
+        # compute the positional encoding and store it in the pe tensor
+        pe = torch.zeros(max_len, embed_dim) #Dim:(max_len , embed_dim) create a max_len x embed_dim all-zero tensor
+        token_pos = torch.arange(0, max_len).unsqueeze(1)  # generate an integer sequence from 0 to max_len-1 and add a dimension
+        # calculate div_term for scaling the sine and cosine functions of different positions
         div_term = torch.exp(torch.arange(0, embed_dim, 2) *
                              -(math.log(10000.0) / embed_dim))
  
-        # 使用正弦和余弦函数生成位置编码，对于d_model的偶数索引，使用正弦函数；对于奇数索引，使用余弦函数。
+        # generate the positional encoding using sine and cosine functions, using the sine function for even indices of d_model and the cosine function for odd indices
         pe[:, 0::2] = torch.sin(token_pos * div_term) #Dim:(max_len , embed_dim)
         pe[:, 1::2] = torch.cos(token_pos * div_term) #Dim:(max_len , embed_dim)
-        pe = pe.unsqueeze(0)                  # 在第一个维度添加一个维度，以便进行批处理
-        self.register_buffer('pe', pe)        # 将位置编码张量注册为缓冲区，以便在不同设备之间传输模型时保持其状态
+        pe = pe.unsqueeze(0)                  # add a dimension in the first dimension for batch processing
+        self.register_buffer('pe', pe)        #     
         
-    # 定义前向传播函数
+    # define the forward function
     def forward(self, x):
-        # 将输入x与对应的位置编码相加
+        #x: (n_samples, n_tokens, embed_dim)
+        # add the input x to the corresponding positional encoding
         x = x + self.pe[:, :x.size(1)].to(x.device)
-        # 应用dropout层并返回结果
+        # apply the dropout layer and return the result
         return self.dropout(x)
 #---------------------------------------------------Test the model-----------------------------------------------------
 if __name__ == "__main__":

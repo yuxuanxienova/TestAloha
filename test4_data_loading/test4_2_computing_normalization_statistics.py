@@ -2,7 +2,9 @@ import h5py
 import numpy as np
 import torch
 import os
-from test4_1_finding_data_files import find_all_hdf5
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from test4_data_loading.test4_1_finding_data_files import find_all_hdf5
 def get_norm_stats(dataset_path_list):
     all_qpos_data = []
     all_action_data = []

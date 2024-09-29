@@ -316,7 +316,7 @@ if __name__ == "__main__":
     args = {
         "depth": 2,
         "n_heads": 4,
-        "entity_dim": 64,
+        "entity_dim": 512,
         "num_input_tokens": 10,
         "out_dim": 10
     }

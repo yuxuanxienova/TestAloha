@@ -62,10 +62,10 @@ class z_encoder(nn.Module):
 if __name__ == "__main__":
     # Sample arguments
     args = {
-        'z_latent_dim': 128,
-        'action_dim': 64,
-        'embed_dim': 256,
-        'state_dim': 512,
+        'z_latent_dim': 32,
+        'action_dim': 14,
+        'embed_dim': 512,
+        'state_dim': 14,
         'k': 10  # action chunk size
     }
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     encoder = z_encoder(args)
 
     # Define batch size
-    batch_size = 32
+    batch_size = 100
 
     # Create dummy input tensors
     action_tokens = torch.randn(batch_size, args['k'], args['action_dim'])  # (batch_size, k, action_dim)

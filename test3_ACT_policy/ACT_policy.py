@@ -12,7 +12,6 @@ class ACT_policy(nn.Module):
         super().__init__()
         self.z_encoder = z_encoder()
 
-
 class z_encoder(nn.Module):
     def __init__(self, args) -> None:
         super().__init__()

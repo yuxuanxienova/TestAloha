@@ -13,7 +13,6 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
         # Model parameters
         self.embed_dim = args["embed_dim"]
-        self.vocab_size = args["vocab_size"]  # Vocabulary size for both source and target tokens
         self.num_input_tokens = args["num_input_tokens"]
         self.num_output_tokens = args["num_output_tokens"]
         self.out_dim = args["out_dim"]
@@ -25,7 +24,6 @@ class Transformer(nn.Module):
             "entity_dim": self.embed_dim,
             "num_input_tokens": self.num_input_tokens,
             "out_dim": self.embed_dim,  # Encoder outputs embeddings of size embed_dim
-             "vocab_size": self.vocab_size
         }
         self.encoder = TransformerEncoder(encoder_args)
         
@@ -36,39 +34,32 @@ class Transformer(nn.Module):
             "embed_dim": self.embed_dim,
             "num_output_tokens": self.num_output_tokens,
             "out_dim": self.out_dim,
-            "vocab_size": self.vocab_size
         }
         self.decoder = TransformerDecoder(decoder_args)
         
-        # Final Linear Layer (if needed)
-        self.final_linear = nn.Linear(self.out_dim, self.vocab_size)
         
-    def forward(self, src, tgt, src_mask=None, tgt_mask=None):
+    def forward(self, src_embed, tgt, src_mask=None, tgt_mask=None):
         """
         Forward pass for the full Transformer model.
-        :param src: Source input (batch_size, num_input_tokens)
-        :param tgt: Target input (batch_size, num_output_tokens)
+        :param src: Source input (batch_size, num_input_tokens, embed_dim)
+        :param tgt: Target input (batch_size, num_output_tokens, embed_dim)
         :param src_mask: Optional mask for the source input
         :param tgt_mask: Optional mask for the target input
-        :return: Predicted logits (batch_size, num_output_tokens, vocab_size)
+        :return: decoder_output (batch_size, num_output_tokens, out_dim)
         """
-        # src: (batch_size, num_input_tokens)
-        # tgt: (batch_size, num_output_tokens)
+        # src: (batch_size, num_input_tokens, embed_dim)
+        # tgt: (batch_size, num_output_tokens, embed_dim)
         
         # Embedding source input
-        src_embed = self.encoder.embedding(src)  # (batch_size, num_input_tokens, embed_dim)
         encoder_output = self.encoder(src_embed)  # (batch_size, num_input_tokens + 1, embed_dim)
         
         # Remove the CLS token from encoder output if not needed
         encoder_output = encoder_output[:, 1:, :]  # (batch_size, num_input_tokens, embed_dim)
         
         # Run the decoder
-        decoder_output = self.decoder(tgt, encoder_output, tgt_mask=tgt_mask)
+        decoder_output = self.decoder(tgt, encoder_output, tgt_mask=tgt_mask)#(batch_size, num_output_tokens, out_dim)
         
-        # Final output projection
-        output = self.final_linear(decoder_output)  # (batch_size, num_output_tokens, vocab_size)
-        
-        return output
+        return decoder_output
 
 # ----------------------------------------------  Transformer Encoder Part  -----------------------------------------------------
 class TransformerEncoder(nn.Module):
@@ -85,8 +76,6 @@ class TransformerEncoder(nn.Module):
         self.out_dim = args["out_dim"]
         # Positional Encoding
         self.pos_encoding = StandardPositionalEncoding(self.embed_dim, dropout=0.1, max_len=5000)
-        # Embedding layer for source tokens
-        self.embedding = nn.Embedding(args["vocab_size"], self.embed_dim)
         # Transformer Encoder Blocks
         self.transformer_encoder_blocks = nn.ModuleList()
         for _ in range(self.depth):
@@ -237,12 +226,9 @@ class TransformerDecoder(nn.Module):
         self.n_heads = args["n_heads"]
         self.embed_dim = args["embed_dim"]
         self.num_output_tokens = args["num_output_tokens"]
-        self.vocab_size = args["vocab_size"]  # Vocabulary size for target tokens
         self.out_dim = args["out_dim"]
         # Positional Encoding
         self.pos_encoding = StandardPositionalEncoding(self.embed_dim, dropout=0.1, max_len=5000)
-        # Embedding layer for target tokens
-        self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
         # Transformer Decoder Blocks
         self.transformer_decoder_blocks = nn.ModuleList()
         for _ in range(self.depth):
@@ -260,7 +246,6 @@ class TransformerDecoder(nn.Module):
         :return: Predicted logits or outputs
         """
         # x: (batch_size, target_seq_len)
-        x = self.embedding(x)  # (batch_size, target_seq_len, embed_dim)
         x = self.pos_encoding(x)
         for decoder_block in self.transformer_decoder_blocks:
             x = decoder_block(x, encoder_output, tgt_mask=tgt_mask, memory_mask=memory_mask)
@@ -416,25 +401,25 @@ if __name__ == "__main__":
         "num_input_tokens": 10,
         "num_output_tokens": 12,
         "out_dim": 64,
-        "vocab_size": 100  # Example vocabulary size
     }
 
     # Instantiate the full Transformer model
     model = Transformer(args)
 
-    # Create sample input data
+    # Create sample input embeddings
     batch_size = 8
     num_input_tokens = args["num_input_tokens"]
     num_output_tokens = args["num_output_tokens"]
+    embed_dim = args["embed_dim"]
 
-    # Source input (token IDs)
-    src_input = torch.randint(0, args["vocab_size"], (batch_size, num_input_tokens))
+    # Source input embeddings
+    src_input_embeddings = torch.randn(batch_size, num_input_tokens, embed_dim)
 
-    # Target input (token IDs)
-    tgt_input = torch.randint(0, args["vocab_size"], (batch_size, num_output_tokens))
+    # Target input embeddings
+    tgt_input_embeddings = torch.randn(batch_size, num_output_tokens, embed_dim)
 
     # Run the model
-    output = model(src_input, tgt_input)
+    output = model(src_input_embeddings, tgt_input_embeddings)
 
     # Print the output shape
     print("Transformer Output shape:", output.shape)  # Should be (batch_size, num_output_tokens, vocab_size)

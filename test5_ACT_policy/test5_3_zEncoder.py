@@ -7,10 +7,7 @@ import math
 from model import TransformerEncoder
 from torch.distributions import Normal
 
-class ACT_policy(nn.Module):
-    def __init__(self, args) -> None:
-        super().__init__()
-        self.z_encoder = z_encoder()
+
 
 class z_encoder(nn.Module):
     def __init__(self, args) -> None:
@@ -19,12 +16,12 @@ class z_encoder(nn.Module):
         self.z_latent_dim = args['z_latent_dim']
         self.action_dim = args['action_dim']
         self.embed_dim = args['embed_dim'] 
-        self.state_dim = args['state_dim'] 
+        self.qpos_dim = args['qpos_dim'] 
         self.k = args['k']#action chunk size 
         
         #layers
         self.encoder_action_layer = nn.Linear(self.action_dim, self.embed_dim)
-        self.encoder_joint_layer = nn.Linear(self.state_dim, self.embed_dim)
+        self.encoder_joint_layer = nn.Linear(self.qpos_dim, self.embed_dim)
         args_transformer = {
             "depth": 4,
             "n_heads": 4,

@@ -16,8 +16,13 @@ class ImagePreprocessModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.backbone = Backbone(name='resnet18', train_backbone=False, return_interm_layers=False, dilation=False)
+        self.normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],  # ImageNet mean
+            std=[0.229, 0.224, 0.225]    # ImageNet std
+        )
     def forward(self, x):
         #x: Dim(batch_size, 3, 480, 640)
+        self.normalize(x)
         x = self.backbone(x)#Dim:(batch_size, 512, 15, 20)
         x = x['0']
         # Flatten only the last two dimensions
@@ -127,14 +132,7 @@ if __name__ == "__main__":
     #image_data: Dim(batch_size, num_cameras=3, 3, 480, 640)
     cam_id = 0
     image_batch = image_data[:, cam_id] # Dim(batch_size, 3, 480, 640)
-
-    # Normalize the image
-    # Define the normalization transform
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],  # ImageNet mean
-        std=[0.229, 0.224, 0.225]    # ImageNet std
-    )
-    input_batch = normalize(image_batch)
+    input_batch = image_batch
     # Move the input to the appropriate device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     input_batch = input_batch.to(device)

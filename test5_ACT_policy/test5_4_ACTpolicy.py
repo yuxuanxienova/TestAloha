@@ -56,19 +56,32 @@ class ACT_policy(nn.Module):
         #Project the z and qpos to the embed_dim
         self.project_z = nn.Linear(self.z_encoder.z_latent_dim, self.transformer_encoder.embed_dim)
         self.project_qpos = nn.Linear(self.qpos_dim, self.transformer_encoder.embed_dim)
-    def forward(self,data):
-        image_data, qpos_data, action_data, is_pad = data
-        #data[0]=image_data: Dim(batch_size, num_cameras=3, 3, 480, 640)
-        #data[1]=qpos_data: Dim(batch_size, 14)
-        #data[2]=action_data: Dim(batch_size, chunk_size, 16)
-        #data[3]=is_pad: Dim(batch_size, chunk_size)
+    def forward(self,image_data, qpos_data, action_data=None, is_pad=None):
+        # Clip the action data if it is not None
+        if action_data is not None: # training time
+            action_data = action_data[:, :self.action_chunk_size]
+            is_pad = is_pad[:, :self.action_chunk_size]
+
+        #image_data: Dim(batch_size, num_cameras=3, 3, 480, 640)
+        #qpos_data: Dim(batch_size, 14)
+        #action_data: Dim(batch_size, chunk_size, 16)
+        #is_pad: Dim(batch_size, chunk_size)
+        
+        is_training = action_data is not None # train or val
+        
         assert image_data.shape[1] == len(self.camera_names)
         assert self.qpos_dim == qpos_data.shape[1]
         self.batch_size = image_data.shape[0]
         
         #1. Infer the latent state z
-        z = self.z_encoder.encode(action_data, qpos_data)#Dim:(batch_size, z_latent_dim)
-        z_token = self.project_z(z).unsqueeze(1)#Dim:(batch_size, 1, embed_dim)
+        if is_training:
+            #in training mode, we sample z from the distribution
+            z = self.z_encoder.encode(action_data, qpos_data)#Dim:(batch_size, z_latent_dim)
+            z_token = self.project_z(z).unsqueeze(1)#Dim:(batch_size, 1, embed_dim)
+        else:
+            #in evaluation mode, we use the zeros as the z
+            z = torch.zeros([self.batch_size, self.z_latent_dim], dtype=torch.float32).to(qpos_data.device)#!!!!Notes: use mean of z ??
+            z_token = self.project_z(z).unsqueeze(1)#Dim:(batch_size, 1, embed_dim)
         
         #2. Preprocess the image data amd qpos data
         list_image_feature_tokens = []
@@ -146,10 +159,16 @@ if __name__ == "__main__":
     is_pad = torch.zeros(batch_size, action_chunk_size, dtype=torch.bool)
     
     # Prepare the input data tuple
-    data = (image_data, qpos_data, action_data, is_pad)
+    # data = (image_data, qpos_data, action_data, is_pad)
     
-    # Run the policy
-    output = policy(data)
+    # Run the policy in training
+    output = policy(image_data, qpos_data, action_data, is_pad)
+    
+    # Print the output shape
+    print("Decoder Output shape:", output.shape)  # Should be (batch_size, action_chunk_size, out_dim)
+    
+    # Run the policy in evaluation
+    output = policy(image_data, qpos_data,  None , is_pad)
     
     # Print the output shape
     print("Decoder Output shape:", output.shape)  # Should be (batch_size, action_chunk_size, out_dim)

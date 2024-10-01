@@ -1,10 +1,12 @@
-
+import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import math
-from model import TransformerEncoder
+from test2_transformer.Transformer import TransformerEncoder
 from torch.distributions import Normal
 
 
@@ -42,8 +44,9 @@ class z_encoder(nn.Module):
         action_tokens = self.encoder_action_layer(action_tokens)#(batch_size, k, embed_dim)
         qpos_token = self.encoder_joint_layer(qpos_token)#(batch_size, embed_dim)
         qpos_token = torch.unsqueeze(qpos_token, axis=1)#(batch_size, 1, embed_dim)
-        tokens = torch.cat((action_tokens, qpos_token), dim=1)#(batch_size, k+1, embed_dim)
-        latent_info = self.transformer_encoder(tokens)#(batch_size, embed_dim)
+        input_tokens = torch.cat((action_tokens, qpos_token), dim=1)#(batch_size, k+1, embed_dim)
+        output_tokens = self.transformer_encoder(input_tokens)#(batch_size,num_input_tokens + 1  ,embed_dim)
+        latent_info = output_tokens[:, 0, :]#(batch_size, embed_dim)
         z_mu_logstd = self.post_layer(latent_info)#(batch_size, z_latent_dim * 2)
         
         z_mu = z_mu_logstd[:, :self.z_latent_dim]#(batch_size, z_latent_dim)

@@ -61,11 +61,17 @@ if __name__ == "__main__":
     batch_size_train = 8
     batch_size_val = 8
     action_chunk_size = 100
-    num_steps = 1000
+    num_steps = 5000
     z_latent_dim = 32
     qpos_dim = 14
     action_dim = 16
     embed_dim = 512
+    
+    # Create a directory to save checkpoints
+    checkpoint_dir = os.path.join(os.path.dirname(__file__), 'checkpoints')
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    # Define the path for saving the model
+    checkpoint_path = os.path.join(checkpoint_dir, 'policy_final.pth')
 
     train_dataloader, val_dataloader, stats, _ = load_data(dataset_dir_l, name_filter, camera_names, batch_size_train, batch_size_val, action_chunk_size, True, True, '', stats_dir_l=stats_dir, sample_weights=sample_weights, train_ratio=train_ratio)
     # Replaces the original train_dataloader with an infinite generator provided by the repeater function. Now, train_dataloader is an iterator that can supply data batches endlessly.
@@ -114,3 +120,27 @@ if __name__ == "__main__":
         loss.backward()
         optimizer.step()
         print('Step:', step, 'Loss:', loss.item())
+        
+        if step % 100 == 0 and step != 0:
+            checkpoint = {
+                'step': step,
+                'model_state_dict': policy.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss.item(),
+                'args': args  # Optionally save args for reference
+            }
+            checkpoint_file = os.path.join(checkpoint_dir, f'policy_step_{step}.pth')
+            torch.save(checkpoint, checkpoint_file)
+            print(f'Checkpoint saved at step {step} to {checkpoint_file}')
+
+    
+    # Save the final model after training
+    final_checkpoint = {
+        'step': num_steps,
+        'model_state_dict': policy.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss.item(),
+        'args': args
+    }
+    torch.save(final_checkpoint, checkpoint_path)
+    print(f'Final model saved to {checkpoint_path}')

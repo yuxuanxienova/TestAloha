@@ -296,6 +296,9 @@ class TransformerDecoderBlock(nn.Module):
         :param memory_mask: Mask for the encoder output (optional)
         :return: Updated target sequence embeddings
         """
+        # x: (batch_size, target_seq_len, embed_dim)
+        if x.device != encoder_output.device:
+            x = x.to(encoder_output.device)
         # Masked Self-Attention
         x = x + self.self_attn(self.norm1(x), mask=tgt_mask)
         # Cross-Attention
